@@ -16,7 +16,7 @@ const d=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'A
 sessionStorage.hubpw=pw;render(d)}catch(e){document.getElementById('err').textContent='Wrong password'}}
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function render(d){document.getElementById('gate').style.display='none';document.getElementById('app').style.display='block';
-document.getElementById('grp').innerHTML=d.groups.map(g=>`<h2>${esc(g.name)}</h2><div class="g">`+g.items.map(i=>`<a class="c" href="${esc(i.u)}" target="_blank" rel="noopener"><b>${esc(i.n)}</b><span>${esc(i.d)}</span></a>`).join('')+'</div>').join('')}
+document.getElementById('grp').innerHTML=d.groups.map(g=>`<h2>${esc(g.name)}</h2><div class="g">`+g.items.map(i=>`<a class="c" href="${esc(i.u)}"><b>${esc(i.n)}</b><span>${esc(i.d)}</span></a>`).join('')+'</div>').join('')}
 document.getElementById('pw').addEventListener('keydown',e=>e.key==='Enter'&&go());
 if(sessionStorage.hubpw){document.getElementById('pw').value=sessionStorage.hubpw;go()}
 </script></body></html>
