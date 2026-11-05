@@ -3,20 +3,70 @@
 #gate{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:12px}
 input,button{font-size:18px;padding:12px 16px;border-radius:10px;border:1px solid #333;background:#1a1d24;color:#fff}button{background:#3b82f6;border:0;cursor:pointer}
 #err{color:#f87171;min-height:1em}#app{display:none;max-width:1100px;margin:auto;padding:24px 16px}h1{margin:0 0 8px}h2{color:#9aa3b2;font-size:15px;text-transform:uppercase;letter-spacing:1px;margin:28px 0 12px}
-.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}a.c{display:block;padding:22px;border-radius:14px;background:#171a21;border:1px solid #262a33;color:inherit;text-decoration:none;transition:.15s}
-a.c:hover{border-color:#3b82f6;transform:translateY(-2px)}a.c b{font-size:19px;display:block;margin-bottom:6px}a.c span{color:#9aa3b2;font-size:14px}</style></head><body>
+h2 .hint{font-weight:400;letter-spacing:0;text-transform:none;color:#6b7280;margin-left:8px;font-size:13px}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}a.c{display:block;padding:22px;border-radius:14px;background:#171a21;border:1px solid #262a33;color:inherit;text-decoration:none;transition:.15s;position:relative}
+a.c:hover{border-color:#3b82f6;transform:translateY(-2px)}a.c b{font-size:19px;display:block;margin-bottom:6px}a.c span{color:#9aa3b2;font-size:14px;display:block}
+a.c .ago{display:block;margin-top:10px;font-size:12px;color:#6b7280}a.c .ago.fresh{color:#59a14f}a.c .ago.stale{color:#d4a017}a.c .ago.old{color:#d23c3c}
+#recentWrap{margin-bottom:8px}#recentWrap h2{color:#93c5fd;margin-top:8px}
+#olderWrap{opacity:.85}#olderWrap h2{color:#9a6b6b}
+</style></head><body>
 <div id="gate"><h1>Boreal Hub</h1><input id="pw" type="password" inputmode="numeric" placeholder="Password" autofocus><button onclick="go()">Unlock</button><div id="err"></div></div>
-<div id="app"><h1>Boreal Hub</h1><div id="grp"></div></div>
+<div id="app"><h1>Boreal Hub</h1><div id="recentWrap"></div><div id="grp"></div><div id="olderWrap"></div></div>
 <script>
 const b=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const LS='hub_last_opened_v1';
+const TOP_N=5;
+const OLD_DAYS=90;
+const loadMap=()=>{try{return JSON.parse(localStorage.getItem(LS)||'{}')}catch(e){return{}}};
+const saveMap=m=>localStorage.setItem(LS,JSON.stringify(m));
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function fmtAgo(ts){
+  if(!ts) return {t:'Never opened',cls:'old'};
+  const d=Math.floor((Date.now()-ts)/86400000);
+  if(d<=0) return {t:'Opened today',cls:'fresh'};
+  if(d===1) return {t:'Opened yesterday',cls:'fresh'};
+  if(d<14) return {t:`Opened ${d} days ago`,cls:'fresh'};
+  if(d<OLD_DAYS) return {t:`Opened ${d} days ago`,cls:'stale'};
+  const when=new Date(ts).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  return {t:`Last opened ${when} (${d}d)`,cls:'old'};
+}
+function card(i,map){
+  const a=fmtAgo(map[i.u]);
+  return `<a class="c" href="${esc(i.u)}" data-u="${esc(i.u)}"><b>${esc(i.n)}</b><span>${esc(i.d)}</span><span class="ago ${a.cls}">${esc(a.t)}</span></a>`;
+}
+function allItems(d){const out=[];(d.groups||[]).forEach(g=>(g.items||[]).forEach(i=>out.push(i)));return out}
+function render(d){
+  document.getElementById('gate').style.display='none';
+  document.getElementById('app').style.display='block';
+  const map=loadMap();
+  const items=allItems(d);
+  const byUrl=Object.fromEntries(items.map(i=>[i.u,i]));
+  const recent=Object.entries(map).filter(([u])=>byUrl[u]).sort((a,b)=>b[1]-a[1]).slice(0,TOP_N).map(([u])=>byUrl[u]);
+  const oldCut=Date.now()-OLD_DAYS*86400000;
+  const older=items.filter(i=>{const t=map[i.u];return t!=null&&t<oldCut}).sort((a,b)=>(map[a.u]||0)-(map[b.u]||0));
+  const olderUrls=new Set(older.map(i=>i.u));
+  document.getElementById('recentWrap').innerHTML=recent.length
+    ?`<h2>Recently used <span class="hint">last ${TOP_N} you opened · also listed below</span></h2><div class="g">${recent.map(i=>card(i,map)).join('')}</div>`
+    :`<h2>Recently used <span class="hint">opens you make here show up in this strip</span></h2><div class="g"><div class="c" style="cursor:default;opacity:.7"><b>None yet</b><span>Open any tracker below and it will pin here next time.</span></div></div>`;
+  document.getElementById('grp').innerHTML=d.groups.map(g=>{
+    const keep=(g.items||[]).filter(i=>!olderUrls.has(i.u));
+    if(!keep.length) return '';
+    return `<h2>${esc(g.name)}</h2><div class="g">${keep.map(i=>card(i,map)).join('')}</div>`;
+  }).join('');
+  document.getElementById('olderWrap').innerHTML=older.length
+    ?`<h2>Older <span class="hint">not opened in ${OLD_DAYS}+ days · candidates to drop</span></h2><div class="g">${older.map(i=>card(i,map)).join('')}</div>`
+    :'';
+  document.getElementById('app').onclick=e=>{
+    const a=e.target.closest('a.c[data-u]');
+    if(!a) return;
+    const m=loadMap();m[a.dataset.u]=Date.now();saveMap(m);
+  };
+}
 async function go(){try{const j=await (await fetch('data.enc.json',{cache:'no-store'})).json();const pw=document.getElementById('pw').value;
 const km=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);
 const k=await crypto.subtle.deriveKey({name:'PBKDF2',salt:b(j.salt),iterations:j.iter,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['decrypt']);
 const d=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:b(j.iv)},k,b(j.ct))));
 sessionStorage.hubpw=pw;render(d)}catch(e){document.getElementById('err').textContent='Wrong password'}}
-const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function render(d){document.getElementById('gate').style.display='none';document.getElementById('app').style.display='block';
-document.getElementById('grp').innerHTML=d.groups.map(g=>`<h2>${esc(g.name)}</h2><div class="g">`+g.items.map(i=>`<a class="c" href="${esc(i.u)}"><b>${esc(i.n)}</b><span>${esc(i.d)}</span></a>`).join('')+'</div>').join('')}
 document.getElementById('pw').addEventListener('keydown',e=>e.key==='Enter'&&go());
 if(sessionStorage.hubpw){document.getElementById('pw').value=sessionStorage.hubpw;go()}
 </script></body></html>
